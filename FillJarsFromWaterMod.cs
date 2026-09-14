@@ -4,10 +4,14 @@ using UnityEngine;
 
 public class FillJarsFromWaterMod : IModApi
 {
+    // One RMB press = one fill. Vanilla CollectWater must not run afterwards
+    // or it drops drinkJarRiverWater next to the player.
+    public static bool FilledThisHold;
+
     public void InitMod(Mod _modInstance)
     {
         new Harmony("local.filljarsfromwater").PatchAll();
-        Debug.Log("[FillJarsFromWater] loaded");
+        Debug.Log("[FillJarsFromWater] loaded 1.0.2");
     }
 
     public static bool LookingAtWater(ItemActionData data)
@@ -68,13 +72,18 @@ public class FillJarsFromWaterMod : IModApi
             if (cur.count <= 1)
             {
                 entity.inventory.SetItem(slot, filled);
+                try { entity.inventory.Changed(); } catch { }
             }
             else
             {
                 cur.count--;
                 entity.inventory.SetItem(slot, cur);
+                try { entity.inventory.Changed(); } catch { }
                 if (!GiveToPlayer(entity, filled, slot))
-                    GameManager.Instance.ItemDropServer(filled, entity.position, Vector3.zero, entity.entityId);
+                {
+                    GameManager.Instance.ItemDropServer(filled, entity.GetPosition(), Vector3.zero, entity.entityId);
+                    Debug.LogWarning("[FillJarsFromWater] inventory full, dropped murky water");
+                }
             }
             data.lastUseTime = Time.time;
             Debug.Log("[FillJarsFromWater] filled a jar into inventory");
@@ -92,8 +101,27 @@ public class FillJarsFromWaterMod : IModApi
         try
         {
             var local = entity as EntityPlayerLocal;
-            if (local != null && local.bag != null && local.bag.AddItem(stack))
-                return true;
+            if (local != null)
+            {
+                try
+                {
+                    var ui = LocalPlayerUI.GetUIForPlayer(local);
+                    var pinv = ui != null ? ui.xui.PlayerInventory : null;
+                    if (pinv != null)
+                    {
+                        if (pinv.AddItem(stack, true)) return true;
+                        if (pinv.AddItemToBackpack(stack)) return true;
+                        if (pinv.AddItemToToolbelt(stack)) return true;
+                    }
+                }
+                catch { }
+                try
+                {
+                    if (local.bag != null && local.bag.AddItem(stack))
+                        return true;
+                }
+                catch { }
+            }
         }
         catch { }
         try
@@ -125,9 +153,21 @@ static class Patch_CollectWater
 {
     static bool Prefix(ItemActionData _actionData, bool _bReleased)
     {
-        if (_bReleased) return true;
-        if (FillJarsFromWaterMod.TryFillJar(_actionData))
+        if (_bReleased)
+        {
+            bool skipVanilla = FillJarsFromWaterMod.FilledThisHold;
+            FillJarsFromWaterMod.FilledThisHold = false;
+            return !skipVanilla;
+        }
+
+        if (FillJarsFromWaterMod.FilledThisHold)
             return false;
+
+        if (FillJarsFromWaterMod.TryFillJar(_actionData))
+        {
+            FillJarsFromWaterMod.FilledThisHold = true;
+            return false;
+        }
         return true;
     }
 }
