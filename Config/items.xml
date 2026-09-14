@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configs>
+	<!-- Keep vanilla CollectWater (physics water). Harmony also fills if looking at any water. -->
+	<set xpath="/items/item[@name='drinkJarEmpty']/property[@class='Action1']/property[@name='Class']/@value">CollectWater</set>
+	<set xpath="/items/item[@name='drinkJarEmpty']/property[@class='Action1']/property[@name='Delay']/@value">1</set>
+</configs>
